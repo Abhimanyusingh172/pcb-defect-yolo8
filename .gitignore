@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.env
+venv/
+*.pt
+*.pth
+*.h5
+datasets/
+runs/
+.vscode/
+Thumbs.db

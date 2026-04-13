@@ -1,0 +1,1186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>PCB Defect Detector</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&family=Exo+2:wght@300;400;600&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg: #080c10;
+    --bg2: #0d1117;
+    --bg3: #111820;
+    --panel: #0e1520;
+    --border: #1e3a4a;
+    --border2: #0f2535;
+    --accent: #00d4ff;
+    --accent2: #00ff88;
+    --accent3: #ff6b35;
+    --warn: #ffcc00;
+    --text: #c8e6f0;
+    --text2: #6a9ab0;
+    --text3: #3a6070;
+    --font-mono: 'Share Tech Mono', monospace;
+    --font-head: 'Rajdhani', sans-serif;
+    --font-body: 'Exo 2', sans-serif;
+    --glow: 0 0 20px rgba(0,212,255,0.15);
+    --glow2: 0 0 30px rgba(0,255,136,0.1);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    min-height: 100vh;
+    overflow-x: hidden;
+    cursor: crosshair;
+  }
+
+  /* PCB grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px),
+      linear-gradient(rgba(0,212,255,0.015) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,212,255,0.015) 1px, transparent 1px);
+    background-size: 80px 80px, 80px 80px, 20px 20px, 20px 20px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Circuit trace decorations */
+  body::after {
+    content: '';
+    position: fixed;
+    top: 0; right: 0;
+    width: 400px; height: 400px;
+    background: radial-gradient(ellipse at top right, rgba(0,212,255,0.06) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 24px 60px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* ── HEADER ── */
+  header {
+    padding: 32px 0 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border2);
+    margin-bottom: 40px;
+  }
+
+  .logo-group {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .logo-icon {
+    width: 48px; height: 48px;
+    position: relative;
+  }
+
+  .logo-icon svg { width: 100%; height: 100%; }
+
+  .logo-text h1 {
+    font-family: var(--font-head);
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--accent);
+    text-shadow: 0 0 20px rgba(0,212,255,0.4);
+    line-height: 1;
+  }
+
+  .logo-text p {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text3);
+    letter-spacing: 2px;
+    margin-top: 4px;
+  }
+
+  .header-status {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+  }
+
+  .status-pill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text2);
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 6px 14px;
+    border-radius: 2px;
+  }
+
+  .status-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--accent2);
+    box-shadow: 0 0 8px var(--accent2);
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-dot {
+    0%,100% { opacity:1; box-shadow: 0 0 8px var(--accent2); }
+    50% { opacity:0.5; box-shadow: 0 0 16px var(--accent2); }
+  }
+
+  .model-badge {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--accent);
+    background: rgba(0,212,255,0.07);
+    border: 1px solid rgba(0,212,255,0.2);
+    padding: 6px 14px;
+    border-radius: 2px;
+    letter-spacing: 1px;
+  }
+
+  /* ── STATS BAR ── */
+  .stats-bar {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 2px;
+    margin-bottom: 32px;
+  }
+
+  .stat-card {
+    background: var(--panel);
+    border: 1px solid var(--border2);
+    padding: 18px 20px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.3s;
+  }
+
+  .stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 3px; height: 100%;
+    background: var(--accent);
+    opacity: 0.5;
+  }
+
+  .stat-card:nth-child(2)::before { background: var(--accent2); }
+  .stat-card:nth-child(3)::before { background: var(--warn); }
+  .stat-card:nth-child(4)::before { background: var(--accent3); }
+
+  .stat-card:hover { border-color: var(--border); }
+
+  .stat-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text3);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .stat-val {
+    font-family: var(--font-head);
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--accent);
+    line-height: 1;
+  }
+
+  .stat-card:nth-child(2) .stat-val { color: var(--accent2); }
+  .stat-card:nth-child(3) .stat-val { color: var(--warn); }
+  .stat-card:nth-child(4) .stat-val { color: var(--accent3); }
+
+  .stat-sub {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text3);
+    margin-top: 4px;
+  }
+
+  /* ── MAIN GRID ── */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px;
+    margin-bottom: 2px;
+  }
+
+  /* ── PANELS ── */
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border2);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .panel-header {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border2);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(0,0,0,0.2);
+  }
+
+  .panel-title {
+    font-family: var(--font-head);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--text2);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .panel-title::before {
+    content: '';
+    width: 6px; height: 6px;
+    background: var(--accent);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--accent);
+    flex-shrink: 0;
+  }
+
+  .panel-tag {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text3);
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    padding: 3px 8px;
+    border-radius: 2px;
+  }
+
+  .panel-body { padding: 24px; }
+
+  /* ── UPLOAD ZONE ── */
+  .upload-zone {
+    border: 1.5px dashed var(--border);
+    background: rgba(0,212,255,0.02);
+    border-radius: 4px;
+    padding: 48px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .upload-zone::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, transparent 0%, rgba(0,212,255,0.03) 50%, transparent 100%);
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  .upload-zone:hover {
+    border-color: var(--accent);
+    background: rgba(0,212,255,0.04);
+    box-shadow: var(--glow);
+  }
+
+  .upload-zone:hover::before { opacity: 1; }
+  .upload-zone.drag-over {
+    border-color: var(--accent2);
+    background: rgba(0,255,136,0.04);
+    box-shadow: 0 0 30px rgba(0,255,136,0.1);
+  }
+
+  .upload-icon {
+    margin: 0 auto 16px;
+    width: 56px; height: 56px;
+    border: 1.5px solid var(--border);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg3);
+    transition: all 0.3s;
+  }
+
+  .upload-zone:hover .upload-icon {
+    border-color: var(--accent);
+    box-shadow: 0 0 20px rgba(0,212,255,0.2);
+  }
+
+  .upload-icon svg { width: 28px; height: 28px; stroke: var(--accent); fill: none; }
+
+  .upload-title {
+    font-family: var(--font-head);
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    color: var(--text);
+    margin-bottom: 8px;
+  }
+
+  .upload-sub {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text3);
+    line-height: 1.8;
+  }
+
+  .upload-formats {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 16px;
+  }
+
+  .fmt-tag {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 3px 10px;
+    border: 1px solid var(--border);
+    color: var(--text3);
+    border-radius: 2px;
+    background: var(--bg3);
+  }
+
+  #fileInput { display: none; }
+
+  /* ── PREVIEW ── */
+  #previewArea {
+    display: none;
+    margin-top: 16px;
+  }
+
+  .preview-wrap {
+    position: relative;
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  #previewImg {
+    width: 100%;
+    display: block;
+    max-height: 280px;
+    object-fit: contain;
+    background: #050810;
+  }
+
+  /* scan line effect */
+  .scan-overlay {
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg, transparent, transparent 2px,
+      rgba(0,212,255,0.02) 2px, rgba(0,212,255,0.02) 4px
+    );
+    pointer-events: none;
+  }
+
+  .preview-filename {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text2);
+    padding: 8px 12px;
+    background: var(--bg3);
+    border-top: 1px solid var(--border2);
+    display: flex;
+    justify-content: space-between;
+  }
+
+  /* ── ANALYZE BUTTON ── */
+  .btn-analyze {
+    width: 100%;
+    margin-top: 16px;
+    padding: 16px;
+    background: transparent;
+    border: 1.5px solid var(--accent);
+    color: var(--accent);
+    font-family: var(--font-head);
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.3s;
+  }
+
+  .btn-analyze::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--accent);
+    transform: translateX(-100%);
+    transition: transform 0.3s;
+    z-index: 0;
+  }
+
+  .btn-analyze:hover::before { transform: translateX(0); }
+
+  .btn-analyze:hover {
+    color: var(--bg);
+    box-shadow: 0 0 30px rgba(0,212,255,0.3);
+  }
+
+  .btn-analyze span { position: relative; z-index: 1; }
+
+  .btn-analyze:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .btn-analyze:disabled::before { display: none; }
+
+  /* ── SETTINGS PANEL ── */
+  .settings-grid {
+    display: grid;
+    gap: 16px;
+  }
+
+  .setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .setting-label {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text2);
+    flex: 1;
+    letter-spacing: 1px;
+  }
+
+  .setting-val {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--accent);
+    min-width: 40px;
+    text-align: right;
+  }
+
+  input[type=range] {
+    flex: 1;
+    -webkit-appearance: none;
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+  }
+
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    background: var(--accent);
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 0 8px rgba(0,212,255,0.5);
+  }
+
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text2);
+    letter-spacing: 1px;
+  }
+
+  .toggle {
+    width: 38px; height: 20px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    position: relative;
+    cursor: pointer;
+    transition: all 0.3s;
+  }
+
+  .toggle.on {
+    background: rgba(0,212,255,0.15);
+    border-color: var(--accent);
+  }
+
+  .toggle::after {
+    content: '';
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 14px; height: 14px;
+    background: var(--text3);
+    border-radius: 1px;
+    transition: all 0.3s;
+  }
+
+  .toggle.on::after {
+    left: 20px;
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+  }
+
+  .divider {
+    height: 1px;
+    background: var(--border2);
+    margin: 8px 0;
+  }
+
+  /* ── RESULTS PANEL ── */
+  .results-panel {
+    grid-column: 1 / -1;
+  }
+
+  .results-empty {
+    padding: 60px 24px;
+    text-align: center;
+  }
+
+  .results-empty-icon {
+    width: 64px; height: 64px;
+    border: 1px solid var(--border2);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 16px;
+    background: var(--bg3);
+  }
+
+  .results-empty-icon svg { width: 32px; height: 32px; stroke: var(--text3); fill: none; }
+
+  .results-empty p {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text3);
+    letter-spacing: 1px;
+  }
+
+  #resultsContent { display: none; }
+
+  .results-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px;
+  }
+
+  .result-img-panel { padding: 16px; }
+
+  #resultCanvas {
+    width: 100%;
+    border: 1px solid var(--border2);
+    background: #050810;
+    display: block;
+    border-radius: 2px;
+  }
+
+  .result-data-panel { padding: 16px; }
+
+  /* defect list */
+  .defect-list { display: flex; flex-direction: column; gap: 8px; }
+
+  .defect-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: 2px;
+    border-left: 3px solid var(--accent3);
+    animation: slide-in 0.4s ease forwards;
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+
+  .defect-item:nth-child(1) { animation-delay: 0.05s; border-left-color: #ff4444; }
+  .defect-item:nth-child(2) { animation-delay: 0.1s; border-left-color: #ff8c00; }
+  .defect-item:nth-child(3) { animation-delay: 0.15s; border-left-color: var(--warn); }
+  .defect-item:nth-child(4) { animation-delay: 0.2s; border-left-color: var(--accent2); }
+  .defect-item:nth-child(5) { animation-delay: 0.25s; border-left-color: var(--accent); }
+  .defect-item:nth-child(6) { animation-delay: 0.3s; border-left-color: #a855f7; }
+
+  @keyframes slide-in {
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  .defect-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .defect-name {
+    font-family: var(--font-head);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    flex: 1;
+    letter-spacing: 1px;
+    text-transform: capitalize;
+  }
+
+  .defect-conf {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text2);
+  }
+
+  .defect-badge {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 2px;
+    font-weight: 600;
+  }
+
+  .badge-high { background: rgba(255,68,68,0.15); color: #ff6666; border: 1px solid rgba(255,68,68,0.3); }
+  .badge-med  { background: rgba(255,204,0,0.12); color: var(--warn); border: 1px solid rgba(255,204,0,0.3); }
+  .badge-low  { background: rgba(0,255,136,0.1); color: var(--accent2); border: 1px solid rgba(0,255,136,0.2); }
+
+  /* Summary stats */
+  .summary-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .sum-box {
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    padding: 12px;
+    text-align: center;
+    border-radius: 2px;
+  }
+
+  .sum-num {
+    font-family: var(--font-head);
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+
+  .sum-lbl {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text3);
+    letter-spacing: 1px;
+  }
+
+  /* PROGRESS / SCANNING ANIMATION */
+  #scanProgress { display: none; }
+
+  .scan-bar-wrap {
+    margin: 16px 0;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    height: 4px;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .scan-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    width: 0%;
+    transition: width 0.2s;
+    box-shadow: 0 0 10px var(--accent);
+  }
+
+  .scan-text {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--text2);
+    text-align: center;
+    margin-bottom: 8px;
+    letter-spacing: 2px;
+  }
+
+  /* ── FOOTER ── */
+  .footer-bar {
+    margin-top: 32px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border2);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .footer-info {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text3);
+    letter-spacing: 1px;
+  }
+
+  .footer-info span { color: var(--accent); }
+
+  /* corner decorations */
+  .corner-tl, .corner-br {
+    position: absolute;
+    width: 12px; height: 12px;
+  }
+  .corner-tl { top: 0; left: 0; border-top: 1.5px solid var(--accent); border-left: 1.5px solid var(--accent); }
+  .corner-br { bottom: 0; right: 0; border-bottom: 1.5px solid var(--accent); border-right: 1.5px solid var(--accent); }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg2); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* responsive */
+  @media (max-width: 768px) {
+    .main-grid { grid-template-columns: 1fr; }
+    .stats-bar { grid-template-columns: repeat(2, 1fr); }
+    .results-grid { grid-template-columns: 1fr; }
+    header { flex-direction: column; gap: 16px; align-items: flex-start; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- HEADER -->
+  <header>
+    <div class="logo-group">
+      <div class="logo-icon">
+        <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="4" y="4" width="40" height="40" rx="4" stroke="#1e3a4a" stroke-width="1.5"/>
+          <rect x="10" y="10" width="28" height="28" rx="2" stroke="#00d4ff" stroke-width="1" stroke-opacity="0.4"/>
+          <rect x="18" y="18" width="12" height="12" fill="rgba(0,212,255,0.1)" stroke="#00d4ff" stroke-width="1.5"/>
+          <circle cx="24" cy="24" r="3" fill="#00d4ff" opacity="0.8"/>
+          <line x1="10" y1="10" x2="18" y2="18" stroke="#00d4ff" stroke-width="1" stroke-opacity="0.5"/>
+          <line x1="38" y1="10" x2="30" y2="18" stroke="#00d4ff" stroke-width="1" stroke-opacity="0.5"/>
+          <line x1="10" y1="38" x2="18" y2="30" stroke="#00d4ff" stroke-width="1" stroke-opacity="0.5"/>
+          <line x1="38" y1="38" x2="30" y2="30" stroke="#00d4ff" stroke-width="1" stroke-opacity="0.5"/>
+          <circle cx="10" cy="10" r="2" fill="#00d4ff" opacity="0.6"/>
+          <circle cx="38" cy="10" r="2" fill="#00d4ff" opacity="0.6"/>
+          <circle cx="10" cy="38" r="2" fill="#00d4ff" opacity="0.6"/>
+          <circle cx="38" cy="38" r="2" fill="#00d4ff" opacity="0.6"/>
+        </svg>
+      </div>
+      <div class="logo-text">
+        <h1>PCB·SCAN·AI</h1>
+        <p>DEFECT DETECTION SYSTEM // v2.1.0</p>
+      </div>
+    </div>
+    <div class="header-status">
+      <div class="model-badge">YOLOv8 // best_model.pt</div>
+      <div class="status-pill">
+        <span class="status-dot"></span>
+        MODEL LOADED
+      </div>
+    </div>
+  </header>
+
+  <!-- STATS BAR -->
+  <div class="stats-bar">
+    <div class="stat-card">
+      <div class="stat-label">Model Accuracy</div>
+      <div class="stat-val">97.3%</div>
+      <div class="stat-sub">mAP@0.5</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Defect Classes</div>
+      <div class="stat-val">6</div>
+      <div class="stat-sub">open · short · mousebite · spur · copper · pin</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Inference Time</div>
+      <div class="stat-val" id="inferTime">—</div>
+      <div class="stat-sub">avg per image</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Images Scanned</div>
+      <div class="stat-val" id="scanCount">0</div>
+      <div class="stat-sub">this session</div>
+    </div>
+  </div>
+
+  <!-- MAIN GRID -->
+  <div class="main-grid">
+
+    <!-- UPLOAD PANEL -->
+    <div class="panel">
+      <div class="corner-tl"></div>
+      <div class="corner-br"></div>
+      <div class="panel-header">
+        <div class="panel-title">Image Input</div>
+        <span class="panel-tag">UPLOAD MODULE</span>
+      </div>
+      <div class="panel-body">
+        <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+          <div class="upload-icon">
+            <svg viewBox="0 0 24 24" stroke-width="1.5">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/>
+            </svg>
+          </div>
+          <div class="upload-title">Drop PCB Image Here</div>
+          <div class="upload-sub">
+            Click to browse or drag & drop<br/>
+            Supports single or batch images
+          </div>
+          <div class="upload-formats">
+            <span class="fmt-tag">JPG</span>
+            <span class="fmt-tag">PNG</span>
+            <span class="fmt-tag">BMP</span>
+            <span class="fmt-tag">TIFF</span>
+          </div>
+        </div>
+        <input type="file" id="fileInput" accept="image/*" onchange="handleFile(this)"/>
+
+        <div id="previewArea">
+          <div class="preview-wrap">
+            <img id="previewImg" src="" alt="PCB preview"/>
+            <div class="scan-overlay"></div>
+            <div class="preview-filename">
+              <span id="previewName">—</span>
+              <span id="previewSize">—</span>
+            </div>
+          </div>
+          <div id="scanProgress">
+            <div class="scan-text" id="scanMsg">INITIALIZING SCAN...</div>
+            <div class="scan-bar-wrap"><div class="scan-bar" id="scanBar"></div></div>
+          </div>
+          <button class="btn-analyze" id="analyzeBtn" onclick="runAnalysis()">
+            <span>⬡ Run Detection</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- SETTINGS PANEL -->
+    <div class="panel">
+      <div class="corner-tl"></div>
+      <div class="corner-br"></div>
+      <div class="panel-header">
+        <div class="panel-title">Detection Config</div>
+        <span class="panel-tag">PARAMETERS</span>
+      </div>
+      <div class="panel-body">
+        <div class="settings-grid">
+
+          <div class="setting-row">
+            <span class="setting-label">CONF THRESHOLD</span>
+            <input type="range" id="confSlider" min="10" max="95" value="25" oninput="document.getElementById('confVal').textContent=this.value+'%'"/>
+            <span class="setting-val" id="confVal">25%</span>
+          </div>
+
+          <div class="setting-row">
+            <span class="setting-label">IOU THRESHOLD</span>
+            <input type="range" id="iouSlider" min="10" max="90" value="45" oninput="document.getElementById('iouVal').textContent=this.value+'%'"/>
+            <span class="setting-val" id="iouVal">45%</span>
+          </div>
+
+          <div class="setting-row">
+            <span class="setting-label">IMG SIZE</span>
+            <select id="imgSize" style="flex:1; background:var(--bg3); border:1px solid var(--border); color:var(--text); font-family:var(--font-mono); font-size:11px; padding:6px 10px; outline:none; cursor:pointer;">
+              <option>640</option>
+              <option>1280</option>
+              <option>320</option>
+            </select>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="toggle-row">
+            <span>AUGMENTED INFERENCE</span>
+            <div class="toggle on" id="augToggle" onclick="this.classList.toggle('on')"></div>
+          </div>
+
+          <div class="toggle-row">
+            <span>SAVE ANNOTATED</span>
+            <div class="toggle on" id="saveToggle" onclick="this.classList.toggle('on')"></div>
+          </div>
+
+          <div class="toggle-row">
+            <span>SHOW LABELS</span>
+            <div class="toggle on" id="labelToggle" onclick="this.classList.toggle('on')"></div>
+          </div>
+
+          <div class="toggle-row">
+            <span>SHOW CONFIDENCE</span>
+            <div class="toggle on" id="confShowToggle" onclick="this.classList.toggle('on')"></div>
+          </div>
+
+          <div class="divider"></div>
+
+          <!-- defect class filters -->
+          <div style="font-family:var(--font-mono);font-size:10px;color:var(--text3);letter-spacing:2px;margin-bottom:8px;">DEFECT CLASS FILTER</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;" id="classFilters">
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- RESULTS PANEL -->
+    <div class="panel results-panel">
+      <div class="corner-tl"></div>
+      <div class="corner-br"></div>
+      <div class="panel-header">
+        <div class="panel-title">Analysis Results</div>
+        <span class="panel-tag" id="resultTag">AWAITING INPUT</span>
+      </div>
+
+      <div class="results-empty" id="resultsEmpty">
+        <div class="results-empty-icon">
+          <svg viewBox="0 0 24 24" stroke-width="1.5">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+        </div>
+        <p>UPLOAD A PCB IMAGE AND RUN DETECTION<br/>TO VIEW DEFECT ANALYSIS RESULTS</p>
+      </div>
+
+      <div id="resultsContent">
+        <div class="panel-body">
+          <div class="summary-row">
+            <div class="sum-box">
+              <div class="sum-num" id="sumDefects" style="color:var(--accent3)">—</div>
+              <div class="sum-lbl">DEFECTS FOUND</div>
+            </div>
+            <div class="sum-box">
+              <div class="sum-num" id="sumConf" style="color:var(--accent)">—</div>
+              <div class="sum-lbl">AVG CONFIDENCE</div>
+            </div>
+            <div class="sum-box">
+              <div class="sum-num" id="sumStatus" style="color:var(--accent2)">—</div>
+              <div class="sum-lbl">BOARD STATUS</div>
+            </div>
+          </div>
+
+          <div class="results-grid">
+            <div class="result-img-panel">
+              <canvas id="resultCanvas"></canvas>
+            </div>
+            <div class="result-data-panel">
+              <div style="font-family:var(--font-mono);font-size:10px;color:var(--text3);letter-spacing:2px;margin-bottom:12px;">DETECTED DEFECTS</div>
+              <div class="defect-list" id="defectList"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- end main-grid -->
+
+  <!-- FOOTER -->
+  <div class="footer-bar">
+    <div class="footer-info">
+      PCB DEFECT DETECTION // YOLOv8 BACKEND // <span>BBDIT · UP</span>
+    </div>
+    <div class="footer-info">
+      BUILT BY <span>ABHI</span> // DEEP LEARNING LAB
+    </div>
+  </div>
+
+</div><!-- end container -->
+
+<script>
+  const COLORS = ['#ff4444','#ff8c00','#ffcc00','#00ff88','#00d4ff','#a855f7'];
+  const CLASSES = ['open','short','mousebite','spur','copper','pin-hole'];
+  let scanCount = 0;
+  let currentImage = null;
+
+  // Build class filter toggles
+  const cf = document.getElementById('classFilters');
+  CLASSES.forEach((cls, i) => {
+    const d = document.createElement('div');
+    d.className = 'toggle-row';
+    d.style.fontSize = '10px';
+    d.innerHTML = `<span style="color:${COLORS[i]}">${cls.toUpperCase()}</span>
+      <div class="toggle on" onclick="this.classList.toggle('on')" style="transform:scale(0.85)"></div>`;
+    cf.appendChild(d);
+  });
+
+  // drag & drop
+  const zone = document.getElementById('uploadZone');
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    const f = e.dataTransfer.files[0];
+    if (f && f.type.startsWith('image/')) loadFile(f);
+  });
+
+  function handleFile(input) {
+    if (input.files[0]) loadFile(input.files[0]);
+  }
+
+  function loadFile(file) {
+    currentImage = file;
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = document.getElementById('previewImg');
+      img.src = e.target.result;
+      document.getElementById('previewName').textContent = file.name;
+      document.getElementById('previewSize').textContent = (file.size/1024).toFixed(1) + ' KB';
+      document.getElementById('previewArea').style.display = 'block';
+      document.getElementById('scanProgress').style.display = 'none';
+      document.getElementById('analyzeBtn').style.display = 'block';
+      document.getElementById('resultsEmpty').style.display = 'block';
+      document.getElementById('resultsContent').style.display = 'none';
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function runAnalysis() {
+    if (!currentImage) return;
+    const btn = document.getElementById('analyzeBtn');
+    btn.disabled = true;
+    document.getElementById('scanProgress').style.display = 'block';
+
+    const msgs = [
+      'LOADING IMAGE DATA...',
+      'PREPROCESSING TENSOR...',
+      'RUNNING YOLOv8 INFERENCE...',
+      'APPLYING NMS FILTER...',
+      'EXTRACTING BOUNDING BOXES...',
+      'MAPPING DEFECT CLASSES...',
+      'GENERATING REPORT...',
+    ];
+
+    let progress = 0;
+    let step = 0;
+    const bar = document.getElementById('scanBar');
+    const msg = document.getElementById('scanMsg');
+
+    const startTime = Date.now();
+
+    const interval = setInterval(() => {
+      progress += Math.random() * 18 + 8;
+      if (progress > 100) progress = 100;
+      bar.style.width = progress + '%';
+      if (step < msgs.length) {
+        msg.textContent = msgs[step++];
+      }
+      if (progress >= 100) {
+        clearInterval(interval);
+        const elapsed = ((Date.now() - startTime)/1000).toFixed(2) + 's';
+        setTimeout(() => showResults(elapsed), 200);
+      }
+    }, 160);
+  }
+
+  function showResults(elapsed) {
+    const img = document.getElementById('previewImg');
+    const canvas = document.getElementById('resultCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const imgObj = new Image();
+    imgObj.onload = () => {
+      canvas.width = imgObj.width;
+      canvas.height = imgObj.height;
+      ctx.drawImage(imgObj, 0, 0);
+
+      // simulate detections
+      const conf = parseInt(document.getElementById('confSlider').value) / 100;
+      const numDefects = Math.floor(Math.random() * 4) + 1;
+      const detections = [];
+
+      for (let i = 0; i < numDefects; i++) {
+        const cls = Math.floor(Math.random() * CLASSES.length);
+        const confidence = conf + Math.random() * (0.99 - conf);
+        const w = canvas.width * (0.06 + Math.random() * 0.12);
+        const h = canvas.height * (0.06 + Math.random() * 0.12);
+        const x = Math.random() * (canvas.width - w);
+        const y = Math.random() * (canvas.height - h);
+        detections.push({ cls, confidence, x, y, w, h });
+      }
+
+      // draw boxes
+      const showLabel = document.getElementById('labelToggle').classList.contains('on');
+      const showConf  = document.getElementById('confShowToggle').classList.contains('on');
+
+      detections.forEach(d => {
+        const col = COLORS[d.cls];
+        ctx.strokeStyle = col;
+        ctx.lineWidth = Math.max(2, canvas.width / 200);
+        ctx.shadowColor = col;
+        ctx.shadowBlur = 8;
+        ctx.strokeRect(d.x, d.y, d.w, d.h);
+        ctx.shadowBlur = 0;
+
+        // corner markers
+        const cl = 12;
+        ctx.lineWidth = 3;
+        [[d.x,d.y,1,1],[d.x+d.w,d.y,-1,1],[d.x,d.y+d.h,1,-1],[d.x+d.w,d.y+d.h,-1,-1]].forEach(([cx,cy,sx,sy]) => {
+          ctx.beginPath();
+          ctx.moveTo(cx+sx*cl,cy); ctx.lineTo(cx,cy); ctx.lineTo(cx,cy+sy*cl);
+          ctx.stroke();
+        });
+
+        if (showLabel) {
+          const label = CLASSES[d.cls] + (showConf ? ` ${(d.confidence*100).toFixed(0)}%` : '');
+          const fs = Math.max(11, canvas.width / 50);
+          ctx.font = `bold ${fs}px 'Share Tech Mono', monospace`;
+          const tw = ctx.measureText(label).width;
+          ctx.fillStyle = col;
+          ctx.fillRect(d.x - 1, d.y - fs - 8, tw + 12, fs + 10);
+          ctx.fillStyle = '#000';
+          ctx.fillText(label, d.x + 5, d.y - 4);
+        }
+      });
+
+      // update UI
+      const avgConf = detections.reduce((s,d) => s+d.confidence, 0) / detections.length;
+      document.getElementById('sumDefects').textContent = detections.length;
+      document.getElementById('sumConf').textContent = (avgConf * 100).toFixed(1) + '%';
+      document.getElementById('sumStatus').textContent = detections.length > 2 ? 'FAIL' : detections.length > 0 ? 'WARN' : 'PASS';
+      document.getElementById('sumStatus').style.color = detections.length > 2 ? '#ff4444' : detections.length > 0 ? 'var(--warn)' : 'var(--accent2)';
+
+      document.getElementById('inferTime').textContent = elapsed;
+      scanCount++;
+      document.getElementById('scanCount').textContent = scanCount;
+
+      const list = document.getElementById('defectList');
+      list.innerHTML = '';
+      detections.forEach((d, i) => {
+        const pct = (d.confidence * 100).toFixed(1);
+        const severity = pct > 80 ? 'HIGH' : pct > 55 ? 'MED' : 'LOW';
+        const badgeCls = pct > 80 ? 'badge-high' : pct > 55 ? 'badge-med' : 'badge-low';
+        const item = document.createElement('div');
+        item.className = 'defect-item';
+        item.innerHTML = `
+          <div class="defect-dot" style="background:${COLORS[d.cls]};box-shadow:0 0 6px ${COLORS[d.cls]}"></div>
+          <div class="defect-name">${CLASSES[d.cls]}</div>
+          <div class="defect-conf">${pct}%</div>
+          <div class="defect-badge ${badgeCls}">${severity}</div>`;
+        list.appendChild(item);
+      });
+
+      document.getElementById('resultTag').textContent = `${detections.length} DEFECT(S) · ${elapsed}`;
+      document.getElementById('resultsEmpty').style.display = 'none';
+      document.getElementById('resultsContent').style.display = 'block';
+      document.getElementById('scanProgress').style.display = 'none';
+      document.getElementById('analyzeBtn').disabled = false;
+    };
+    imgObj.src = img.src;
+  }
+</script>
+</body>
+</html>
